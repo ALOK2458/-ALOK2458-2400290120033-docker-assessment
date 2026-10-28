@@ -25,6 +25,11 @@ try {
     if ($stagedFiles | Where-Object { $_ -match "(?i)(^|/)(\.env|cosign\.key)$|\.pem$|\.p12$|\.pfx$" }) {
         throw "A local environment or private-key file is staged. Unstage it safely before signing."
     }
+    $trackedCredentials = @(git ls-files .env cosign.key)
+    if ($trackedCredentials.Count -gt 0) {
+        throw "A local environment or private-key file is already tracked: $($trackedCredentials -join ', '). Remove it from tracking safely before signing."
+    }
+    git status --short
     Write-Output "Staged-file safety check passed. No .env or private-key file is staged."
 
     $publicKey = Join-Path $projectRoot "cosign.pub"

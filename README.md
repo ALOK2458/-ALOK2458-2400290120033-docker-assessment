@@ -46,7 +46,7 @@ flowchart LR
 - **Database:** PostgreSQL 17 Alpine; its data directory is stored in the named volume `festpass-postgres-data`.
 - **Network boundary:** frontend and backend share `frontend-backend`; backend and database share the internal `backend-database` network. Frontend is not a member of the database network.
 
-`compose.yaml` is the final registry-image configuration for Stage 4. `compose.stage2.yaml` is a small local-build override so the Stage 2 stack can still be reproduced before publishing; it adds a backend build from `backend/` and tags that development image `fest-backend:0.2`.
+`compose.yaml` is the final registry-image configuration for Stage 4. `compose.stage2.yaml` is a small local-build override so the Stage 2 stack can still be reproduced before publishing; it builds the original Python 3.9 backend from `backend/` and tags that assessment image `fest-backend:0.1`.
 
 ## Prerequisites
 
@@ -168,7 +168,7 @@ The tests cover health connectivity states, registration success and listing, mi
 
 ## Stage 3 — Trivy scan and remediation
 
-The initial image remains based on the required `python:3.9`; the remediated image uses the version-tagged `python:3.13.9-slim-bookworm` base, exact pinned Python dependencies, and a non-root UID. The image starts with Gunicorn and exposes only the application port.
+The initial image remains based on the required `python:3.9`; `backend/requirements.stage1.txt` preserves the starter dependencies needed to rebuild that Python 3.9 image after remediation. The remediated image uses the current version-tagged `python:3.14.10-slim-bookworm` base, exact pinned direct Python dependencies, and a non-root UID. The image starts with Gunicorn and exposes only the application port.
 
 Install Trivy from its official installation page. Before scanning, update/download its database:
 
@@ -187,7 +187,7 @@ It builds the initial image, records actual table output in `reports/trivy-befor
 | Image tag | Base image | CRITICAL count | HIGH count | Image size | Scan status |
 |---|---|---:|---:|---:|---|
 | `fest-backend:0.1` | `python:3.9` | Not scanned | Not scanned | Not measured | Pending: Trivy and Docker runtime unavailable here |
-| `fest-backend:0.2` | `python:3.13.9-slim-bookworm` | Not scanned | Not scanned | Not measured | Pending: Trivy and Docker runtime unavailable here |
+| `fest-backend:0.2` | `python:3.14.10-slim-bookworm` | Not scanned | Not scanned | Not measured | Pending: Trivy and Docker runtime unavailable here |
 
 The two report files currently contain only an explicit “NOT RUN” note, not fabricated scanner output. Replace them only by running the script with Trivy and Docker available. Update the table with the actual report totals and actual image sizes. The required pass condition is exit code `0` for:
 

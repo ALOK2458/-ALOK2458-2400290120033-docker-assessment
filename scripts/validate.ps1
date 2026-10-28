@@ -12,6 +12,7 @@ $requiredFiles = @(
     ".gitignore",
     "backend/app.py",
     "backend/requirements.txt",
+    "backend/requirements.stage1.txt",
     "backend/Dockerfile",
     "backend/Dockerfile.stage1",
     "backend/.dockerignore",
@@ -45,6 +46,24 @@ else {
 
 Push-Location $projectRoot
 try {
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw "Docker CLI is not installed."
+    }
+    $dockerClient = docker version --format "{{.Client.Version}}" 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker CLI could not report its client version: $dockerClient"
+    }
+    Write-Output "PASS: Docker CLI is installed (client $dockerClient)."
+
+    $dockerServer = docker version --format "{{.Server.Version}}" 2>&1
+    $dockerServerReady = $LASTEXITCODE -eq 0
+    if ($dockerServerReady) {
+        Write-Output "PASS: Docker daemon is running (server $dockerServer)."
+    }
+    else {
+        Write-Output "BLOCKED: Docker daemon is unavailable: $dockerServer"
+    }
+
     $ignoredEnv = git check-ignore -q .env
     if ($LASTEXITCODE -ne 0) {
         throw ".env is not ignored by Git."
@@ -73,19 +92,27 @@ try {
         if ($relativePath -match "(?i)(^|/)(\.env|cosign\.key)$|\.pem$|\.p12$|\.pfx$") {
             throw "A private environment or key file is tracked: $relativePath"
         }
-        $fullPath = Join-Path $projectRoot $relativePath
-        if (Test-Path -LiteralPath $fullPath -PathType Leaf) {
-            $content = [System.IO.File]::ReadAllText($fullPath)
-            foreach ($pattern in $secretPatterns) {
-                if ($content -match $pattern) {
-                    throw "A possible credential or private key was found in tracked file $relativePath."
-                }
+    }
+    $textFiles = Get-ChildItem -LiteralPath $projectRoot -File -Recurse | Where-Object {
+        $_.FullName -notmatch "[\\/]\.git([\\/]|$)|[\\/]\.venv([\\/]|$)|[\\/]screenshots([\\/]|$)" -and
+        $_.Name -ne ".env" -and
+        $_.Name -notmatch "\.(key|pem|p12|pfx)$" -and
+        $_.Extension -match "^\.(py|ps1|yaml|yml|html|conf|txt|md|example|gitignore)$|^$"
+    }
+    foreach ($file in $textFiles) {
+        $content = [System.IO.File]::ReadAllText($file.FullName)
+        foreach ($pattern in $secretPatterns) {
+            if ($content -match $pattern) {
+                throw "A possible credential or private key was found in $($file.FullName)."
             }
         }
     }
     Write-Output "PASS: no obvious credential strings found in tracked files."
 
     if ($RequireRunningStack) {
+        if (-not $dockerServerReady) {
+            throw "A running Docker daemon is required for -RequireRunningStack."
+        }
         $healthUri = "http://localhost:$env:PORT/api/health"
         $health = Invoke-RestMethod -Uri $healthUri -TimeoutSec 5
         if ($health.regno -ne $env:REGNO -or -not $health.database) {
@@ -95,12 +122,32 @@ try {
         docker compose ps
     }
     else {
-        Write-Output "INFO: Docker runtime image/container checks were not requested."
+        if ($dockerServerReady) {
+            foreach ($image in @("fest-backend:0.1", "fest-backend:0.2", "$($env:IMAGE_NAME):1.0.0")) {
+                docker image inspect $image --format "{{.RepoTags}}"
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Output "AVAILABLE IMAGE: $image"
+                }
+                else {
+                    Write-Output "NOT BUILT/PULLED: $image"
+                }
+            }
+            docker compose ps
+        }
+        else {
+            Write-Output "SKIPPED: image and container checks require a running Docker daemon."
+        }
     }
 
     foreach ($toolName in @("trivy", "cosign")) {
         if (Get-Command $toolName -ErrorAction SilentlyContinue) {
             Write-Output "AVAILABLE: $toolName"
+        }
+        if (Test-Path -LiteralPath (Join-Path $projectRoot "cosign.pub")) {
+            Write-Output "AVAILABLE: cosign.pub"
+        }
+        else {
+            Write-Output "NOT GENERATED: cosign.pub (generate the student's own key pair in Stage 5)."
         }
         else {
             Write-Output "NOT INSTALLED: $toolName"
