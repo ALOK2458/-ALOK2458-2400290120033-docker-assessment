@@ -1,0 +1,1 @@
+NOT RUN: Trivy is not installed in the current environment, and no image scan has been performed. Run scripts/stage3.ps1 after installing Trivy and starting Docker to replace this note with genuine scan output.

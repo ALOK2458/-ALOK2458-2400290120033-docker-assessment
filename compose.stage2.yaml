@@ -1,0 +1,10 @@
+services:
+  backend:
+    image: fest-backend:0.2
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: 0.2
+    environment:
+      APP_VERSION: "0.2"
